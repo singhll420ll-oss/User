@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Services{% endblock %}
+
+{% block content %}
+<header class="bg-primary text-white p-3 sticky-top">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center">
+            <a href="{{ url_for('dashboard') }}" class="text-white">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <h5 class="mb-0">Services</h5>
+            <div>
+                <a href="{{ url_for('cart') }}" class="text-white position-relative">
+                    <i class="fas fa-shopping-cart"></i>
+                    {% if cart_count > 0 %}
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                            {{ cart_count }}
+                        </span>
+                    {% endif %}
+                </a>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="container my-4">
+    {% if services %}
+        <div class="row">
+            {% for service in services %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100">
+                        {% if service.photo %}
+                            <img src="{{ url_for('static', filename='images/uploads/' + service.photo) }}" 
+                                 class="card-img-top" alt="{{ service.name }}" style="height: 200px; object-fit: cover;">
+                        {% else %}
+                            <img src="{{ url_for('static', filename='images/default-service.jpg') }}" 
+                                 class="card-img-top" alt="Default" style="height: 200px; object-fit: cover;">
+                        {% endif %}
+                        
+                        <div class="card-body">
+                            <h5 class="card-title">{{ service.name }}</h5>
+                            
+                            <div class="price-section mb-3">
+                                <span class="text-muted text-decoration-line-through">₹{{ "%.2f"|format(service.original_price) }}</span>
+                                <span class="badge bg-success ms-2">{{ service.discount }}% OFF</span>
+                                <h4 class="text-primary mt-1">₹{{ "%.2f"|format(service.final_price) }}</h4>
+                            </div>
+                            
+                            <p class="card-text">{{ service.short_description }}</p>
+                        </div>
+                        
+                        <div class="card-footer bg-white">
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" 
+                                        data-bs-target="#serviceModal{{ service.id }}">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <form action="{{ url_for('add_to_cart') }}" method="POST" class="d-inline">
+                                    <input type="hidden" name="item_type" value="service">
+                                    <input type="hidden" name="item_id" value="{{ service.id }}">
+                                    <input type="hidden" name="quantity" value="1">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-cart-plus"></i> Add to Cart
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Service Modal -->
+                <div class="modal fade" id="serviceModal{{ service.id }}" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">{{ service.name }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        {% if service.photo %}
+                                            <img src="{{ url_for('static', filename='images/uploads/' + service.photo) }}" 
+                                                 class="img-fluid rounded" alt="{{ service.name }}">
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="price-details">
+                                            <p class="text-muted"><del>₹{{ "%.2f"|format(service.original_price) }}</del></p>
+                                            <p class="text-success">Discount: {{ service.discount }}%</p>
+                                            <h3 class="text-primary">₹{{ "%.2f"|format(service.final_price) }}</h3>
+                                        </div>
+                                        <hr>
+                                        <h6>Description:</h6>
+                                        <p>{{ service.short_description }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <form action="{{ url_for('add_to_cart') }}" method="POST">
+                                    <input type="hidden" name="item_type" value="service">
+                                    <input type="hidden" name="item_id" value="{{ service.id }}">
+                                    <input type="hidden" name="quantity" value="1">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-cart-plus"></i> Add to Cart
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-concierge-bell fa-4x text-muted mb-3"></i>
+            <h4>Not available at the time</h4>
+            <p class="text-muted">No active services are available right now.</p>
+        </div>
+    {% endif %}
+</main>
+
+<!-- Bottom Navigation -->
+{% include 'bottom_nav.html' %}
+{% endblock %}
