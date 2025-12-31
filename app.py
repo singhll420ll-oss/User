@@ -1,46 +1,75 @@
-import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask_session import Session
+from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from database import db, User, Service, Menu, Cart, Order, OrderItem
+from datetime import datetime
+import os
 from PIL import Image
 import io
-from database import db, User, Service, Menu, Cart, Order, OrderItem
-from config import Config
 
 app = Flask(__name__)
-app.config.from_object(Config)
+app.config['SECRET_KEY'] = 'your-secret-key-here'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///user_app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['UPLOAD_FOLDER'] = 'static/uploads/profile_pics'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Initialize database
+# Allowed extensions for images
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+# Initialize extensions
 db.init_app(app)
-
-# Create upload folder
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+Session(app)
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def save_profile_picture(file):
+def save_profile_pic(file):
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         # Add timestamp to make filename unique
-        from datetime import datetime
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{timestamp}_{filename}"
         
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # Create directory if not exists
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         
-        # Resize image to save space
-        img = Image.open(file)
-        img.thumbnail((500, 500))
+        # Save file
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Resize image if needed
+        img = Image.open(filepath)
+        img.thumbnail((300, 300))
         img.save(filepath)
         
         return filename
     return None
 
-# Create database tables
+# Create tables
 with app.app_context():
     db.create_all()
 
-# ========== 1️⃣ USER REGISTRATION SYSTEM ==========
+# Login required decorator
+def login_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ========== ROUTES ==========
+
+@app.route('/')
+def home():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -49,29 +78,34 @@ def register():
         mobile = request.form.get('mobile')
         email = request.form.get('email')
         location = request.form.get('location')
+        latitude = request.form.get('latitude')
+        longitude = request.form.get('longitude')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
         
         # Validate passwords match
         if password != confirm_password:
-            flash('Passwords do not match!', 'danger')
+            flash('Passwords do not match!', 'error')
             return redirect(url_for('register'))
         
-        # Check if mobile or email already exists
+        # Check if user already exists
         if User.query.filter_by(mobile=mobile).first():
-            flash('Mobile number already registered!', 'danger')
+            flash('Mobile number already registered!', 'error')
             return redirect(url_for('register'))
         
         if User.query.filter_by(email=email).first():
-            flash('Email already registered!', 'danger')
+            flash('Email already registered!', 'error')
             return redirect(url_for('register'))
         
         # Handle profile picture upload
         profile_pic = None
         if 'profile_pic' in request.files:
             file = request.files['profile_pic']
-            if file.filename:
-                profile_pic = save_profile_picture(file)
+            if file.filename != '':
+                profile_pic = save_profile_pic(file)
+        
+        # Hash password
+        hashed_password = generate_password_hash(password)
         
         # Create new user
         new_user = User(
@@ -79,9 +113,11 @@ def register():
             mobile=mobile,
             email=email,
             location=location,
+            latitude=latitude,
+            longitude=longitude,
+            password=hashed_password,
             profile_pic=profile_pic
         )
-        new_user.password = password  # This will hash the password
         
         db.session.add(new_user)
         db.session.commit()
@@ -91,192 +127,124 @@ def register():
     
     return render_template('register.html')
 
-@app.route('/get_location')
-def get_location():
-    # This endpoint would typically get location from browser/phone
-    # For demo, we'll return a placeholder
-    return jsonify({'location': 'Auto-detected location'})
-
-# ========== 2️⃣ LOGIN SYSTEM ==========
-@app.route('/', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
-    
     if request.method == 'POST':
         mobile = request.form.get('mobile')
         password = request.form.get('password')
         
         user = User.query.filter_by(mobile=mobile).first()
         
-        if user and user.verify_password(password):
+        if user and check_password_hash(user.password, password):
             session['user_id'] = user.id
-            session['full_name'] = user.full_name
+            session['user_name'] = user.full_name
             session['profile_pic'] = user.profile_pic
             flash('Login successful!', 'success')
             return redirect(url_for('dashboard'))
         else:
-            flash('Invalid mobile number or password!', 'danger')
+            flash('Invalid mobile number or password!', 'error')
     
     return render_template('login.html')
 
 @app.route('/logout')
 def logout():
     session.clear()
-    flash('You have been logged out.', 'info')
+    flash('Logged out successfully!', 'success')
     return redirect(url_for('login'))
 
-# ========== 3️⃣ DASHBOARD LAYOUT ==========
 @app.route('/dashboard')
+@login_required
 def dashboard():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     user = User.query.get(session['user_id'])
     return render_template('dashboard.html', user=user)
 
-# ========== 4️⃣ SERVICE SECTION ==========
 @app.route('/services')
+@login_required
 def services():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     active_services = Service.query.filter_by(status='active').all()
     return render_template('service.html', services=active_services)
 
-@app.route('/service/<int:service_id>')
-def view_service(service_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    service = Service.query.get_or_404(service_id)
-    return render_template('service_detail.html', service=service)
-
-# ========== 5️⃣ MENU SECTION ==========
 @app.route('/menu')
+@login_required
 def menu():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     active_menu = Menu.query.filter_by(status='active').all()
     return render_template('menu.html', menu_items=active_menu)
 
-@app.route('/menu/<int:menu_id>')
-def view_menu(menu_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    menu_item = Menu.query.get_or_404(menu_id)
-    return render_template('menu_detail.html', menu_item=menu_item)
-
-# ========== 6️⃣ ADD TO CART SYSTEM ==========
 @app.route('/add_to_cart', methods=['POST'])
+@login_required
 def add_to_cart():
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'message': 'Please login first'})
-    
     item_type = request.form.get('item_type')
     item_id = request.form.get('item_id')
-    quantity = request.form.get('quantity', 1, type=int)
+    quantity = request.form.get('quantity', 1)
     
     # Check if item already in cart
-    existing_item = Cart.query.filter_by(
+    existing = Cart.query.filter_by(
         user_id=session['user_id'],
         item_type=item_type,
         item_id=item_id
     ).first()
     
-    if existing_item:
-        existing_item.quantity += quantity
+    if existing:
+        existing.quantity += int(quantity)
     else:
-        cart_item = Cart(
+        new_item = Cart(
             user_id=session['user_id'],
             item_type=item_type,
             item_id=item_id,
             quantity=quantity
         )
-        db.session.add(cart_item)
+        db.session.add(new_item)
     
     db.session.commit()
-    
-    return jsonify({'success': True, 'message': 'Item added to cart'})
+    return jsonify({'success': True})
 
 @app.route('/cart')
+@login_required
 def cart():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     cart_items = Cart.query.filter_by(user_id=session['user_id']).all()
     
-    # Get item details
-    cart_details = []
+    items_data = []
     total_amount = 0
     
     for item in cart_items:
         if item.item_type == 'service':
-            item_detail = Service.query.get(item.item_id)
-        else:  # 'menu'
-            item_detail = Menu.query.get(item.item_id)
+            product = Service.query.get(item.item_id)
+        else:
+            product = Menu.query.get(item.item_id)
         
-        if item_detail:
-            cart_details.append({
-                'cart_id': item.id,
-                'item_type': item.item_type,
-                'item_detail': item_detail,
+        if product:
+            item_total = product.final_price * item.quantity
+            total_amount += item_total
+            
+            items_data.append({
+                'id': item.id,
+                'product': product,
+                'type': item.item_type,
                 'quantity': item.quantity,
-                'total': item_detail.final_price * item.quantity
+                'total': item_total
             })
-            total_amount += item_detail.final_price * item.quantity
     
-    return render_template('cart.html', cart_items=cart_details, total_amount=total_amount)
+    return render_template('cart.html', cart_items=items_data, total=total_amount)
 
-@app.route('/remove_from_cart/<int:cart_id>')
-def remove_from_cart(cart_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    cart_item = Cart.query.get_or_404(cart_id)
-    
-    # Verify ownership
-    if cart_item.user_id != session['user_id']:
-        flash('Unauthorized action!', 'danger')
-        return redirect(url_for('cart'))
-    
-    db.session.delete(cart_item)
-    db.session.commit()
-    
-    flash('Item removed from cart!', 'success')
+@app.route('/remove_from_cart/<int:item_id>')
+@login_required
+def remove_from_cart(item_id):
+    item = Cart.query.get(item_id)
+    if item and item.user_id == session['user_id']:
+        db.session.delete(item)
+        db.session.commit()
+        flash('Item removed from cart!', 'success')
     return redirect(url_for('cart'))
 
-# ========== 7️⃣ CONFIRM ORDER FLOW ==========
-@app.route('/order_form')
-def order_form():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
+@app.route('/checkout')
+@login_required
+def checkout():
     user = User.query.get(session['user_id'])
-    
-    # Calculate total from cart
-    cart_items = Cart.query.filter_by(user_id=session['user_id']).all()
-    total_amount = 0
-    
-    for item in cart_items:
-        if item.item_type == 'service':
-            item_detail = Service.query.get(item.item_id)
-        else:
-            item_detail = Menu.query.get(item.item_id)
-        
-        if item_detail:
-            total_amount += item_detail.final_price * item.quantity
-    
-    return render_template('order_form.html', user=user, total_amount=total_amount)
+    return render_template('order_form.html', user=user)
 
 @app.route('/place_order', methods=['POST'])
+@login_required
 def place_order():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     user_id = session['user_id']
     delivery_location = request.form.get('delivery_location')
     payment_mode = request.form.get('payment_mode')
@@ -285,48 +253,47 @@ def place_order():
     cart_items = Cart.query.filter_by(user_id=user_id).all()
     
     if not cart_items:
-        flash('Your cart is empty!', 'warning')
+        flash('Your cart is empty!', 'error')
         return redirect(url_for('cart'))
     
     # Calculate total amount
     total_amount = 0
-    order_items = []
-    
     for item in cart_items:
         if item.item_type == 'service':
-            item_detail = Service.query.get(item.item_id)
+            product = Service.query.get(item.item_id)
         else:
-            item_detail = Menu.query.get(item.item_id)
+            product = Menu.query.get(item.item_id)
         
-        if item_detail:
-            total_amount += item_detail.final_price * item.quantity
-            order_items.append({
-                'item_type': item.item_type,
-                'item_id': item.item_id,
-                'quantity': item.quantity,
-                'price': item_detail.final_price
-            })
+        if product:
+            total_amount += product.final_price * item.quantity
     
     # Create order
-    order = Order(
+    new_order = Order(
         user_id=user_id,
         total_amount=total_amount,
         payment_mode=payment_mode,
-        delivery_location=delivery_location
+        delivery_location=delivery_location,
+        order_status='Pending'
     )
-    db.session.add(order)
-    db.session.flush()  # Get order id
+    db.session.add(new_order)
+    db.session.flush()  # Get order ID
     
-    # Create order items
-    for item in order_items:
-        order_item = OrderItem(
-            order_id=order.id,
-            item_type=item['item_type'],
-            item_id=item['item_id'],
-            quantity=item['quantity'],
-            price=item['price']
-        )
-        db.session.add(order_item)
+    # Add order items
+    for item in cart_items:
+        if item.item_type == 'service':
+            product = Service.query.get(item.item_id)
+        else:
+            product = Menu.query.get(item.item_id)
+        
+        if product:
+            order_item = OrderItem(
+                order_id=new_order.id,
+                item_type=item.item_type,
+                item_id=item.item_id,
+                quantity=item.quantity,
+                price=product.final_price
+            )
+            db.session.add(order_item)
     
     # Clear cart
     Cart.query.filter_by(user_id=user_id).delete()
@@ -336,44 +303,15 @@ def place_order():
     flash('Order placed successfully!', 'success')
     return redirect(url_for('order_history'))
 
-# ========== 9️⃣ ORDER HISTORY ==========
 @app.route('/order_history')
+@login_required
 def order_history():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     orders = Order.query.filter_by(user_id=session['user_id']).order_by(Order.order_date.desc()).all()
-    
-    # Get order details with items
-    order_details = []
-    for order in orders:
-        items = []
-        for item in order.items:
-            if item.item_type == 'service':
-                item_detail = Service.query.get(item.item_id)
-            else:
-                item_detail = Menu.query.get(item.item_id)
-            
-            items.append({
-                'type': item.item_type,
-                'detail': item_detail,
-                'quantity': item.quantity,
-                'price': item.price
-            })
-        
-        order_details.append({
-            'order': order,
-            'items': items
-        })
-    
-    return render_template('order_history.html', orders=order_details)
+    return render_template('order_history.html', orders=orders)
 
-# ========== 🔟 PROFILE SECTION ==========
 @app.route('/profile', methods=['GET', 'POST'])
+@login_required
 def profile():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     user = User.query.get(session['user_id'])
     
     if request.method == 'POST':
@@ -382,23 +320,30 @@ def profile():
         user.email = request.form.get('email')
         user.location = request.form.get('location')
         
+        # Handle password change
+        new_password = request.form.get('new_password')
+        if new_password:
+            user.password = generate_password_hash(new_password)
+        
         # Handle profile picture update
         if 'profile_pic' in request.files:
             file = request.files['profile_pic']
-            if file.filename:
-                new_pic = save_profile_picture(file)
+            if file.filename != '':
+                # Delete old picture if exists
+                if user.profile_pic:
+                    old_path = os.path.join(app.config['UPLOAD_FOLDER'], user.profile_pic)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                
+                # Save new picture
+                new_pic = save_profile_pic(file)
                 if new_pic:
                     user.profile_pic = new_pic
-        
-        # Handle password change if provided
-        new_password = request.form.get('new_password')
-        if new_password:
-            user.password = new_password
         
         db.session.commit()
         
         # Update session
-        session['full_name'] = user.full_name
+        session['user_name'] = user.full_name
         session['profile_pic'] = user.profile_pic
         
         flash('Profile updated successfully!', 'success')
@@ -406,20 +351,26 @@ def profile():
     
     return render_template('profile.html', user=user)
 
-# ========== HELPER FUNCTIONS ==========
-@app.context_processor
-def inject_user():
-    if 'user_id' in session:
-        user = User.query.get(session['user_id'])
-        return dict(current_user=user)
-    return dict(current_user=None)
-
-@app.context_processor
-def cart_count():
-    if 'user_id' in session:
-        count = Cart.query.filter_by(user_id=session['user_id']).count()
-        return dict(cart_count=count)
-    return dict(cart_count=0)
+# API for getting service/menu details
+@app.route('/get_item_details/<item_type>/<int:item_id>')
+@login_required
+def get_item_details(item_type, item_id):
+    if item_type == 'service':
+        item = Service.query.get(item_id)
+    else:
+        item = Menu.query.get(item_id)
+    
+    if item:
+        return jsonify({
+            'name': item.name,
+            'photo': item.photo,
+            'original_price': item.original_price,
+            'discount': item.discount,
+            'final_price': item.final_price,
+            'description': item.short_description if hasattr(item, 'short_description') else item.description
+        })
+    
+    return jsonify({'error': 'Item not found'}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
