@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Top Header -->
+<header class="bg-primary text-white p-3 sticky-top">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0">{{ current_user.full_name }}</h5>
+                <small>Welcome back!</small>
+            </div>
+            <div>
+                {% if current_user.profile_pic %}
+                    <img src="{{ url_for('static', filename='images/uploads/' + current_user.profile_pic) }}" 
+                         class="rounded-circle" width="50" height="50" alt="Profile">
+                {% else %}
+                    <img src="{{ url_for('static', filename='images/default-avatar.jpg') }}" 
+                         class="rounded-circle" width="50" height="50" alt="Profile">
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Main Content -->
+<main class="container my-4">
+    <div class="row">
+        <div class="col-12">
+            <h4>Welcome to your Dashboard</h4>
+            <p>Select an option from the navigation below:</p>
+            
+            <div class="row mt-4">
+                <div class="col-md-4 mb-3">
+                    <a href="{{ url_for('services') }}" class="card text-decoration-none">
+                        <div class="card-body text-center">
+                            <i class="fas fa-concierge-bell fa-3x text-primary mb-3"></i>
+                            <h5>Services</h5>
+                            <p class="text-muted">Browse available services</p>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <a href="{{ url_for('menu') }}" class="card text-decoration-none">
+                        <div class="card-body text-center">
+                            <i class="fas fa-utensils fa-3x text-success mb-3"></i>
+                            <h5>Menu</h5>
+                            <p class="text-muted">View food menu</p>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <a href="{{ url_for('cart') }}" class="card text-decoration-none">
+                        <div class="card-body text-center">
+                            <i class="fas fa-shopping-cart fa-3x text-warning mb-3"></i>
+                            <h5>Cart</h5>
+                            <p class="text-muted">{{ cart_count }} items</p>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- Bottom Navigation -->
+<nav class="navbar navbar-dark bg-dark fixed-bottom">
+    <div class="container d-flex justify-content-around">
+        <a href="{{ url_for('services') }}" class="navbar-brand">
+            <i class="fas fa-concierge-bell"></i>
+            <small>Services</small>
+        </a>
+        <a href="{{ url_for('menu') }}" class="navbar-brand">
+            <i class="fas fa-utensils"></i>
+            <small>Menu</small>
+        </a>
+        <a href="{{ url_for('cart') }}" class="navbar-brand position-relative">
+            <i class="fas fa-shopping-cart"></i>
+            {% if cart_count > 0 %}
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    {{ cart_count }}
+                </span>
+            {% endif %}
+            <small>Cart</small>
+        </a>
+        <a href="{{ url_for('order_history') }}" class="navbar-brand">
+            <i class="fas fa-history"></i>
+            <small>History</small>
+        </a>
+        <a href="{{ url_for('profile') }}" class="navbar-brand">
+            <i class="fas fa-user"></i>
+            <small>Profile</small>
+        </a>
+    </div>
+</nav>
+{% endblock %}
