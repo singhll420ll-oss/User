@@ -1,0 +1,109 @@
+/* Custom Styles */
+body {
+    padding-bottom: 70px; /* For fixed bottom navigation */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.flash-messages {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    width: 300px;
+}
+
+.sticky-top {
+    z-index: 1000;
+}
+
+/* Bottom Navigation */
+.navbar-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 5px;
+    font-size: 0.8rem;
+    color: #fff !important;
+}
+
+.navbar-brand i {
+    font-size: 1.2rem;
+    margin-bottom: 2px;
+}
+
+.navbar-brand:hover {
+    color: #ddd !important;
+}
+
+/* Card hover effects */
+.card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.card a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Profile picture */
+.profile-pic-upload {
+    position: relative;
+    display: inline-block;
+}
+
+.profile-pic-upload img {
+    object-fit: cover;
+    border: 3px solid #dee2e6;
+}
+
+/* Price styling */
+.price-section .text-decoration-line-through {
+    font-size: 0.9rem;
+}
+
+/* Order status badges */
+.badge-pending {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.badge-accepted {
+    background-color: #17a2b8;
+    color: #fff;
+}
+
+.badge-delivered {
+    background-color: #28a745;
+    color: #fff;
+}
+
+/* Cart badge */
+.position-relative .badge {
+    font-size: 0.6rem;
+    padding: 0.25em 0.5em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .flash-messages {
+        width: 90%;
+        left: 5%;
+        right: 5%;
+    }
+    
+    .navbar-brand {
+        font-size: 0.7rem;
+        padding: 8px 2px;
+    }
+    
+    .navbar-brand i {
+        font-size: 1rem;
+    }
+}
